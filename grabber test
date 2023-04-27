@@ -1,0 +1,54 @@
+import wx
+import wx.lib.scrolledpanel as scrolled
+import telebot
+import threading
+from textblob import TextBlob
+import sys
+
+# Подключение к API Telegram
+bot = telebot.TeleBot('TOKEN')
+
+class MessagesWindow(wx.Frame):
+    def __init__(self):
+        super().__init__(None, wx.ID_ANY, "Bot Messages", size=(600, 400))
+        self.panel = scrolled.ScrolledPanel(self, wx.ID_ANY)
+        self.messages_sizer = wx.BoxSizer(wx.VERTICAL)
+        self.panel.SetSizer(self.messages_sizer)
+
+        # Создание окна для вывода сообщений
+        self.text_ctrl = wx.TextCtrl(self.panel, style=wx.TE_MULTILINE|wx.TE_READONLY)
+        self.messages_sizer.Add(self.text_ctrl, flag=wx.EXPAND, proportion=1)
+        self.panel.SetupScrolling()
+
+        # Перенаправление стандартного вывода в wx.TextCtrl
+        sys.stdout = self.text_ctrl
+
+        # Получение сообщений из группового чата
+        @bot.message_handler(func=lambda message: True, content_types=['text', 'document', 'audio', 'photo', 'video'])
+        def analyze_message(message):
+            # Анализ сообщения на тональность
+            text = TextBlob(message.text)
+            polarity = text.sentiment.polarity
+            if polarity > 0:
+                sentiment = 'positive'
+            elif polarity < 0:
+                sentiment = 'negative'
+            else:
+                sentiment = 'neutral'
+            # Вывод результата анализа в окно
+            message_text = f"Message from {message.from_user.username}: {message.text}\n"
+            message_sentiment = f"Sentiment: {sentiment}, Polarity: {polarity}\n"
+            wx.CallAfter(self.text_ctrl.AppendText, message_text)
+            wx.CallAfter(self.text_ctrl.AppendText, message_sentiment)
+
+        # Запуск цикла бота в отдельном потоке
+        def run_bot():
+            bot.polling()
+
+        bot_thread = threading.Thread(target=run_bot, daemon=True)
+        bot_thread.start()
+
+if __name__ == '__main__':
+    app = wx.App()
+    MessagesWindow().Show()
+    app.MainLoop()
